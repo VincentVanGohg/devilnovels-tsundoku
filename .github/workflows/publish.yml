@@ -1,0 +1,113 @@
+name: Build DevilNovels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: publish
+
+      - name: Checkout extension source
+        uses: actions/checkout@v4
+        with:
+          repository: VincentVanGohg/extensions-source
+          ref: main
+          path: source
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate signing key
+        working-directory: source
+        run: |
+          keytool -genkeypair \
+            -keystore signingkey.jks \
+            -storepass temporary-password \
+            -keypass temporary-password \
+            -alias devilnovels \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=DevilNovels"
+
+      - name: Compile extension
+        working-directory: source
+        env:
+          ALIAS: devilnovels
+          KEY_STORE_PASSWORD: temporary-password
+          KEY_PASSWORD: temporary-password
+        run: ./gradlew :src:es:DevilNovels:assembleRelease
+
+      - name: Prepare publication
+        working-directory: publish
+        run: |
+          set -euo pipefail
+
+          MODULE="../source/src/es/DevilNovels"
+          APK="$(find "$MODULE/build/outputs/apk/release" \
+            -name '*.apk' -type f | head -n 1)"
+          INFO="$MODULE/build/keiyoushi-source-info.json"
+
+          test -n "$APK"
+          test -f "$INFO"
+
+          mkdir -p apk
+          cp "$APK" apk/
+
+          python - "$INFO" "$(basename "$APK")" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          info = json.loads(
+              Path(sys.argv[1]).read_text(encoding="utf-8")
+          )
+          source = info["sources"][0]
+
+          entry = {
+              "name": info["name"],
+              "pkg": info["packageName"],
+              "apk": sys.argv[2],
+              "lang": source["lang"],
+              "code": int(info["versionCode"]),
+              "version": info["versionName"],
+              "nsfw": 0,
+              "sources": [{
+                  "name": source["name"],
+                  "lang": source["lang"],
+                  "id": str(source["id"]),
+                  "baseUrl": source["baseUrl"]
+              }]
+          }
+
+          Path("index.min.json").write_text(
+              json.dumps([entry], separators=(",", ":")),
+              encoding="utf-8"
+          )
+          PY
+
+      - name: Publish files
+        working-directory: publish
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.min.json apk/
+          git commit -m "Build and publish DevilNovels"
+          git push
