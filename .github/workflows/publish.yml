@@ -1,4 +1,4 @@
-name: Build DevilNovels
+ name: Build DevilNovels
 
 on:
   workflow_dispatch:
@@ -59,6 +59,10 @@ jobs:
 
           test -s signingkey.jks
           echo "Archivo de firma decodificado correctamente."
+
+      - name: Fix code formatting
+        working-directory: source
+        run: ./gradlew :src:es:DevilNovels:spotlessApply
 
       - name: Compile extension
         working-directory: source
