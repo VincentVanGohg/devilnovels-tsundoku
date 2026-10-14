@@ -44,7 +44,9 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=DevilNovels"
-
+      - name: Fix code formatting
+        working-directory: source
+        run: ./gradlew :src:es:DevilNovels:spotlessApply
       - name: Compile extension
         working-directory: source
         env:
