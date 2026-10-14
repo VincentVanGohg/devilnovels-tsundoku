@@ -32,84 +32,129 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Generate signing key
+      - name: Restore signing key
         working-directory: source
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
         run: |
-          keytool -genkeypair \
-            -keystore signingkey.jks \
-            -storepass temporary-password \
-            -keypass temporary-password \
-            -alias devilnovels \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=DevilNovels"
+          set -euo pipefail
+          echo "$SIGNING_KEY_BASE64" | base64 --decode > signingkey.jks
+          test -s signingkey.jks
+
       - name: Fix code formatting
         working-directory: source
         run: ./gradlew :src:es:DevilNovels:spotlessApply
+
       - name: Compile extension
         working-directory: source
         env:
-          ALIAS: devilnovels
-          KEY_STORE_PASSWORD: temporary-password
-          KEY_PASSWORD: temporary-password
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :src:es:DevilNovels:assembleRelease
 
       - name: Prepare publication
         working-directory: publish
+        env:
+          REPO: VincentVanGohg/devilnovels-tsundoku
         run: |
           set -euo pipefail
 
           MODULE="../source/src/es/DevilNovels"
-          APK="$(find "$MODULE/build/outputs/apk/release" \
-            -name '*.apk' -type f | head -n 1)"
+          APK="$(find "$MODULE/build/outputs/apk/release" -name '*.apk' -type f | head -n 1)"
+          JAR="$(find "$MODULE/build/outputs/jar/release" -name '*.jar' -type f | head -n 1)"
           INFO="$MODULE/build/keiyoushi-source-info.json"
 
           test -n "$APK"
+          test -n "$JAR"
           test -f "$INFO"
 
-          mkdir -p apk
+          mkdir -p apk jar
           cp "$APK" apk/
+          cp "$JAR" jar/
 
-          python - "$INFO" "$(basename "$APK")" <<'PY'
+          curl -fsSL \
+            https://raw.githubusercontent.com/NovelSourcery/extensions-source/main/.github/scripts/index_pb2.py \
+            -o index_pb2.py
+
+          python -m pip install protobuf
+
+          python - "$INFO" "$(basename "$APK")" "$(basename "$JAR")" <<'PY'
+          import gzip
           import json
           import sys
           from pathlib import Path
+          from google.protobuf import json_format
+          import index_pb2
 
-          info = json.loads(
-              Path(sys.argv[1]).read_text(encoding="utf-8")
-          )
+          info = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          apk_name, jar_name = sys.argv[2], sys.argv[3]
           source = info["sources"][0]
 
-          entry = {
-              "name": info["name"],
-              "pkg": info["packageName"],
-              "apk": sys.argv[2],
-              "lang": source["lang"],
-              "code": int(info["versionCode"]),
-              "version": info["versionName"],
-              "nsfw": 0,
-              "sources": [{
-                  "name": source["name"],
-                  "lang": source["lang"],
-                  "id": str(source["id"]),
-                  "baseUrl": source["baseUrl"]
-              }]
-          }
+          fingerprint = "1949a8ea99220909ea0dc64befc11b7a45377420185579ed87f1b7921f364b3d"
 
+          ext = index_pb2.Extension(
+              name=info["name"],
+              packageName=info["packageName"],
+              extensionLib=info["extensionLib"],
+              versionCode=int(info["versionCode"]),
+              versionName=info["versionName"],
+              contentWarning=info["contentWarning"],
+              isNovel=True,
+              sources=[
+                  index_pb2.Source(
+                      id=int(source["id"]),
+                      name=source["name"],
+                      language=source["lang"],
+                      homeUrl=source["baseUrl"],
+                  )
+              ],
+              resources=index_pb2.Resources(
+                  apkUrl=f"https://raw.githubusercontent.com/VincentVanGohg/devilnovels-tsundoku/main/apk/{apk_name}",
+                  jarUrl=f"https://raw.githubusercontent.com/VincentVanGohg/devilnovels-tsundoku/main/jar/{jar_name}",
+                  iconUrl="https://cdn.jsdelivr.net/gh/VincentVanGohg/extensions-source@main/core/src/main/res/mipmap-xhdpi/ic_launcher.png",
+              ),
+          )
+
+          index = index_pb2.Index(
+              name="DevilNovels",
+              badgeLabel="DN",
+              signingKey=fingerprint,
+              contact=index_pb2.Contact(
+                  website="https://github.com/VincentVanGohg/devilnovels-tsundoku"
+              ),
+              extensionList=index_pb2.ExtensionList(extensions=[ext]),
+          )
+
+          json_text = json_format.MessageToJson(
+              index,
+              preserving_proto_field_name=False,
+          )
+
+          Path("index.json").write_text(json_text + "\n", encoding="utf-8")
           Path("index.min.json").write_text(
-              json.dumps([entry], separators=(",", ":")),
-              encoding="utf-8"
+              json.dumps(json.loads(json_text), separators=(",", ":")),
+              encoding="utf-8",
+          )
+          Path("index.pb").write_bytes(
+              gzip.compress(index.SerializeToString(deterministic=True), mtime=0)
           )
           PY
+
+          rm index_pb2.py
 
       - name: Publish files
         working-directory: publish
         run: |
-          set -e
+          set -euo pipefail
           git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.min.json apk/
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.json index.min.json index.pb apk/ jar/
+
+          if git diff --cached --quiet; then
+            echo "No changes to publish"
+            exit 0
+          fi
+
           git commit -m "Build and publish DevilNovels"
           git push
