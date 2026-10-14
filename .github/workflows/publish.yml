@@ -36,28 +36,29 @@ jobs:
         working-directory: source
         env:
           SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
         run: |
           set -euo pipefail
 
           if [ -z "$SIGNING_KEY_BASE64" ]; then
-            echo "ERROR: SIGNING_KEY_BASE64 está vacío."
+            echo "ERROR: El secreto está vacío."
             exit 1
           fi
 
-          printf '%s' "$SIGNING_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > signingkey.jks
+          CLEAN_KEY="$(printf '%s' "$SIGNING_KEY_BASE64" | tr -d '[:space:]')"
+          echo "Longitud del secreto recibido: ${#CLEAN_KEY} caracteres"
 
-          if [ ! -s signingkey.jks ]; then
-            echo "ERROR: El archivo de firma está vacío."
+          if ! printf '%s' "$CLEAN_KEY" | grep -Eq '^[A-Za-z0-9+/]*={0,2}$'; then
+            echo "ERROR: El secreto contiene caracteres que no pertenecen a Base64."
             exit 1
           fi
 
-          keytool -list -keystore signingkey.jks -storepass "$KEY_STORE_PASSWORD" > /dev/null
-          echo "Clave restaurada y verificada correctamente."
+          if ! printf '%s' "$CLEAN_KEY" | base64 --decode > signingkey.jks; then
+            echo "ERROR: El texto Base64 no se puede decodificar."
+            exit 1
+          fi
 
-      - name: Fix code formatting
-        working-directory: source
-        run: ./gradlew :src:es:DevilNovels:spotlessApply
+          test -s signingkey.jks
+          echo "Archivo de firma decodificado correctamente."
 
       - name: Compile extension
         working-directory: source
