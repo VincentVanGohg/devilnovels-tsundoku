@@ -1,0 +1,34 @@
+{
+  "name": "DevilNovels",
+  "badgeLabel": "DN",
+  "signingKey": "1949a8ea99220909ea0dc64befc11b7a45377420185579ed87f1b7921f364b3d",
+  "contact": {
+    "website": "https://github.com/VincentVanGohg/devilnovels-tsundoku"
+  },
+  "extensionList": {
+    "extensions": [
+      {
+        "name": "DevilNovels",
+        "packageName": "eu.kanade.tachiyomi.novelextension.es.DevilNovels",
+        "resources": {
+          "apkUrl": "https://raw.githubusercontent.com/VincentVanGohg/devilnovels-tsundoku/main/apk/tachiyomi-es.DevilNovels-v1.6.6.apk",
+          "iconUrl": "https://cdn.jsdelivr.net/gh/VincentVanGohg/extensions-source@main/core/src/main/res/mipmap-xhdpi/ic_launcher.png",
+          "jarUrl": "https://raw.githubusercontent.com/VincentVanGohg/devilnovels-tsundoku/main/jar/tachiyomi-es.DevilNovels-v1.6.6.jar"
+        },
+        "extensionLib": "1.6",
+        "versionCode": "106006",
+        "versionName": "1.6.6",
+        "contentWarning": "CONTENT_WARNING_SAFE",
+        "sources": [
+          {
+            "id": "196575173364882447",
+            "name": "DevilNovels",
+            "language": "es",
+            "homeUrl": "https://devilnovels.com"
+          }
+        ],
+        "isNovel": true
+      }
+    ]
+  }
+}
