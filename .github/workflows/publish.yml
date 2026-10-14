@@ -61,8 +61,8 @@ jobs:
           echo "Archivo de firma decodificado correctamente."
    
       - name: Fix code formatting
-    working-directory: source
-    run: ./gradlew :src:es:DevilNovels:spotlessApply
+        working-directory: source
+        run: ./gradlew :src:es:DevilNovels:spotlessApply
 
       - name: Compile extension
         working-directory: source
